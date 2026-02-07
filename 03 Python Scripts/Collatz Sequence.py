@@ -1,5 +1,5 @@
 import sys
-
+ 
 
 ## Generate Collatz sequence
 
