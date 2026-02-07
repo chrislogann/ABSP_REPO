@@ -1,11 +1,11 @@
-import sys
-
-
-## Generate Collatz sequence
+import re
 
 class CollatzLogic:
     @staticmethod
     def collatz_calc(number):
+
+        ## Generate Collatz sequence
+
         if number % 2 == 0:
             print('EVEN')
             return 3 * number + 1
@@ -17,26 +17,23 @@ class EntryType:
     @staticmethod
     def input_method():
 
-        input_value = "A"
+        input_value = None
 
         while True:
+            
+            print("Enter 'Q' to Quit Program")
+            print("or input value:")
+            input_value = input()
 
-            input_value = input().strip()
-            print(input_value)
-            if input_value.upper() == "Q":
+            if re.search(r"(?i)Q",input_value.upper()):
                 print("Exiting Program")
-                sys.exit()
-                #quit()
+                quit()
 
             try:
-                print("Enter 'Q' to Quit Program")
-                print("or input value:")
-
                 input_value = int(input_value)
 
             except ValueError:
                 print("ValueError: Not Integer type")
-                continue
 
             RetVal = str(CollatzLogic.collatz_calc(input_value))
             print("Return number is " + RetVal)
