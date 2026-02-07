@@ -5,4 +5,4 @@
 !*.py
 
 # Also keep the .gitignore file itself
-!.gitignore
+# !.gitignore
