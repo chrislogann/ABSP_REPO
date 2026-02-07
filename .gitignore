@@ -1,0 +1,7 @@
+# Ignore Everything
+
+*
+
+# Except the Following Files Types
+!.gitignore
+!.py
