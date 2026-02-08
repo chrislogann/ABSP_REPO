@@ -9,11 +9,11 @@ grid = [['.', '.', '.', '.', '.', '.'],
         ['.', '.', '.', '.', '.', '.']]
 
 # Transposing into heart
-for i in range(6):
+for y in range(6):
     transpose = ""
 
-    for row in grid:
-        transpose = transpose + row[i]
+    for x in range(len(grid)):
+        transpose = transpose + grid[x][y]
     
     print(transpose)
 
