@@ -5,4 +5,4 @@
 !.py
 
 # But allow folders so git can traverse
-!*/
+!**/
