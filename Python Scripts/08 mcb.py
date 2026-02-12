@@ -8,9 +8,6 @@
 import shelve
 import pyperclip
 import sys
-import os
-
-os.chdir("C:\\Users\\logan\\OneDrive\\Desktop\\GIT_REPO\\ABSP_REPO\\Python Scripts")
 
 mcbShelf = shelve.open('08 mcb')
 
