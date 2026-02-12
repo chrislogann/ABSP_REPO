@@ -1,1 +1,8 @@
+## Ignore everything
+*
 
+## Except
+!.py
+
+# But allow folders so git can traverse
+!*/
