@@ -4,6 +4,11 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
+"""
+Script 11_command_link_emailer drafts and sends emails.
+Remeber to get the passkey from your email provider.
+"""
+
 def draft_email(pSender,pReceivier):
     # --- Create Message ---
     message = MIMEMultipart()
