@@ -9,6 +9,11 @@ import os
 import time
 import uuid
 
+"""
+Script 11_image_site_downloader returns pictures from google images.
+A user inputs a query and gets related photos.
+"""
+
 def search_images(query):
     browser = webdriver.Edge()
     browser.get('https://images.google.com')
