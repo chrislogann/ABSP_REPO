@@ -1,7 +1,10 @@
 # Ignore everything
 *
 
-# Re-allow all directories
+# Search directory
+!*/
+
+# Search subfolders within directory
 !**/
 
 # Allow python files
