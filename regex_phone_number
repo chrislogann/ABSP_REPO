@@ -1,1 +1,0 @@
-^\W?(?<area_code>\d{3})\W?(?<exchange_code>\d{3})\W?(?<line_number>\d{4})\W?(?<extension>\d{1,4})?$
