@@ -1,7 +1,6 @@
 import os
 import openpyxl
 import csv
-import re
 import logging
 
 logging.basicConfig(level=logging.DEBUG, format=' %(asctime)s %(levelname)s - %(message)s')
@@ -80,15 +79,8 @@ def return_excel_data(pFilePath):
         logging.debug(f"Executing function get_sheet_data")
 
         vSheetDataList = []
-        for rowNum in range(pActiveSheet.max_row):
-
-            vRowData = []
-            for colNum in range(pActiveSheet.max_column):
-
-                row_data = pActiveSheet.cell(row = rowNum+1,column = colNum+1).value
-                vRowData.append(row_data)
-
-            vSheetDataList.append(vRowData)
+        for row in pActiveSheet.iter_rows(values_only=True):
+            vSheetDataList.append(list(row))
 
         logging.debug(f"Function get_sheet_data complete")
         return vSheetDataList
@@ -101,8 +93,7 @@ def return_excel_data(pFilePath):
 
     ## Creating export filename
     filename = os.path.basename(pFilePath)
-    match = re.match(r"^(.+?)(\..+?)$",filename)
-    filename_no_extension = match.group(1)
+    filename_no_extension = os.path.splitext(filename)[0]
     wb = openpyxl.open(pFilePath)
 
     ## Getting export data
@@ -178,10 +169,9 @@ def output_csv_file (pDirectory,pExcelDataList):
         None
         """
 
-        csv_file = open(pExportFilepath,'w',newline='')
-        csvWriter = csv.writer(csv_file)
-        csvWriter.writerows(pExportDataList)
-        csv_file.close()
+        with open(pExportFilepath, "w", newline="") as csv_file:
+            csvWriter = csv.writer(csv_file)
+            csvWriter.writerows(pExportDataList)
 
     """
     Entry Point
