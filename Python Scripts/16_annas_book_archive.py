@@ -6,6 +6,10 @@ import os
 import imapclient
 import pyzmail
 import isbnlib
+import diskcache
+import logging
+
+logging.basicConfig(level=logging.DEBUG,format=' %(asctime)s %(levelname)s - %(message)s')
 
 """
 Script 16_annas_book_archive reads an email and downloads related books from Anna's Book Archive.
@@ -27,7 +31,7 @@ def get_email_content(user_email,user_key):
 
 def process_email_content(raw_messages):
 
-    pattern = re.compile(r"\d{10,13}")
+    pattern = re.compile(r"\b(?:97[89]\d{10}|\d{9}[\dX])\b")
 
     isbn_set = set()
     for uid, data in raw_messages.items():
@@ -55,7 +59,7 @@ def get_book_data(isbn):
 
     query_url = f"https://annas-archive.gl/search?q={isbn}"
 
-    res = requests.get(query_url)
+    res = requests.get(query_url, timeout=20)
     res.raise_for_status()
 
     soupReader = BeautifulSoup(res.text, "html.parser")
@@ -65,9 +69,13 @@ def get_book_data(isbn):
     download_list = []
     formats_seen = set()
     for bookElem in bookElems:
+        
+        metaElem = bookElem.select_one("div.font-semibold")
 
         ##Getting metadata
-        metaElem = bookElem.find("div",{"class":"text-gray-800 dark:text-slate-400 font-semibold text-sm leading-[1.2] mt-2"})
+        if not metaElem:
+            continue
+
         meta_text = metaElem.get_text()
 
         ##Only English books
@@ -116,9 +124,12 @@ def get_download_link(md5,key):
         "key": key
     }
 
-    res = requests.get(url, params=params)
+    res = requests.get(url, params=params, timeout=20)
 
-    data = res.json()
+    try:
+        data = res.json()
+    except ValueError:
+        return None
 
     if data["download_url"]:
         download_link = data["download_url"]
@@ -129,22 +140,23 @@ def get_download_link(md5,key):
         return None
 
 ## Returns isbn metadata
+cache = diskcache.Cache("./isbn_cache")
+
 def get_metadata(isbn):
+    if isbn in cache:
+        print("using cache")
+        return cache[isbn]
+    meta = isbnlib.meta(isbn,service='openl')
 
-    metadata = isbnlib.meta(isbn, service='default')
-
-    if not metadata:
-        return {
-            "isbn": isbn,
-            "title": "Unknown Title",
-            "authors": ["Unknown Author"]
+    if not meta:
+        meta = {
+            "ISBN-13": isbn,
+            "Title": "Unknown Title",
+            "Authors": ["Unknown Author"]
         }
 
-    return {
-        "isbn": metadata.get("ISBN-13", isbn),
-        "title": metadata.get("Title", "Unknown Title"),
-        "authors": metadata.get("Authors", ["Unknown Author"])
-    }
+    cache.set(isbn,meta, expire=None)
+    return meta
 
 ## Find book infomation from isbn
 def generate_filename(metadata,book_format):
@@ -154,9 +166,9 @@ def generate_filename(metadata,book_format):
 
         return filename
 
-    isbn = metadata['isbn']
-    title = metadata['title']
-    authors = ", ".join(metadata["authors"])
+    isbn = metadata['ISBN-13']
+    title = metadata['Title']
+    authors = ", ".join(metadata["Authors"])
     file_format = book_format.lower()
 
     filename = f"{isbn}-{title} {authors} {book_format}.{file_format}"
@@ -164,21 +176,24 @@ def generate_filename(metadata,book_format):
     filename = clean_filename(filename)
 
     return filename
-	
+
+## Create export folder
+def create_folderpath():
+
+    directory = os.getcwd()
+    folderpath = os.path.join(directory,"downloaded_books")
+    os.makedirs(folderpath, exist_ok = True)
+
+    return folderpath
+
+    # export_filepath = os.path.join(folderpath,filename)
 # Download and create file
-def create_file(filename,download_link):
+def create_file(filepath,download_link):
         
-        res = requests.get(download_link)
+        res = requests.get(download_link, stream=True, timeout=20)
         res.raise_for_status()
 
-        ## Create export folder and filepath
-        directory = os.getcwd()
-        folderpath = os.path.join(directory,"downloaded_books")
-        os.makedirs(folderpath, exist_ok = True)
-
-        export_filepath = os.path.join(folderpath,filename)
-
-        with open(export_filepath,'wb') as bookFile:
+        with open(filepath,'wb') as bookFile:
             for chunk in res.iter_content(100000):
                 bookFile.write(chunk)
 
@@ -202,6 +217,9 @@ def main():
         books.extend(get_book_data(isbn))
 
     ## Sorted to process EPUB files first and PDF files second if necessary
+
+    folderpath = create_folderpath()
+
     sorted_books = sorted(books, key=lambda x: 0 if x[2] == 'EPUB' else 1)
     seen_isbn = set()
     for book in sorted_books:
@@ -211,16 +229,24 @@ def main():
         if isbn in seen_isbn:
             continue
 
+        book_metadata = get_metadata(isbn)
+        filename = generate_filename(book_metadata,book_format)
+        print(filename)
+
+        export_filepath = os.path.join(folderpath,filename)
+
+        if os.path.exists(export_filepath):
+            print("path exists")
+            seen_isbn.add(isbn)
+            continue
+
+        ## Only gets a 50 downloads a day. Use wisely
         download_link = get_download_link(md5,book_key)
 
         if not download_link:
             continue
-        
-        metadata = get_metadata(isbn)
-        filename = generate_filename(metadata,book_format)
-        print(filename)
 
-        create_file(filename,download_link)
+        create_file(export_filepath,download_link)
 
         seen_isbn.add(isbn)
 
