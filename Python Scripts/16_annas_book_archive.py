@@ -10,6 +10,8 @@ import diskcache
 import logging
 
 logging.basicConfig(level=logging.DEBUG,format=' %(asctime)s %(levelname)s - %(message)s')
+## Create request session
+session = requests.Session()
 
 """
 Script 16_annas_book_archive reads an email and downloads related books from Anna's Book Archive.
@@ -17,15 +19,11 @@ Script 16_annas_book_archive reads an email and downloads related books from Ann
 
 ## Access email inbox and return book content from email
 def get_email_content(user_email,user_key):
-    imap_obj = imapclient.IMAPClient("imap.gmail.com",ssl = True)
-    imap_obj.login(user_email,user_key)
-
-    ## Opening inbox folder
-    imap_obj.select_folder("INBOX",readonly=True)
-    UIDs = imap_obj.search(["UNSEEN","SUBJECT", "DOWNLOAD BOOKS FROM ARCHIVE"])
-
-    ## Getting email content
-    raw_messages = imap_obj.fetch(UIDs, ['BODY[]', 'FLAGS'])
+    with imapclient.IMAPClient("imap.gmail.com", ssl=True) as imap_obj:
+        imap_obj.login(user_email, user_key)
+        imap_obj.select_folder("INBOX", readonly=True)
+        UIDs = imap_obj.search(["UNSEEN","SUBJECT", "DOWNLOAD BOOKS FROM ARCHIVE"])
+        raw_messages = imap_obj.fetch(UIDs, ['BODY[]', 'FLAGS'])
 
     return raw_messages
 
@@ -59,19 +57,27 @@ def get_book_data(isbn):
 
     query_url = f"https://annas-archive.gl/search?q={isbn}"
 
+<<<<<<< HEAD
+    res = session.get(query_url, timeout=20)
+=======
     res = requests.get(query_url, timeout=20)
+>>>>>>> 1a13a00c77b2933804922b5ed5358cddefd636f1
     res.raise_for_status()
 
     soupReader = BeautifulSoup(res.text, "html.parser")
 
     bookElems = soupReader.find_all("div", {"class":"flex pt-3 pb-3 border-b last:border-b-0 border-gray-100"})
-
+    
     download_list = []
     formats_seen = set()
     for bookElem in bookElems:
         
         metaElem = bookElem.select_one("div.font-semibold")
 
+<<<<<<< HEAD
+        metaElem = bookElem.select_one("div.font-semibold")
+        if not metaElem:
+=======
         ##Getting metadata
         if not metaElem:
             continue
@@ -80,31 +86,32 @@ def get_book_data(isbn):
 
         ##Only English books
         if "ENGLISH" not in meta_text.upper():
+>>>>>>> 1a13a00c77b2933804922b5ed5358cddefd636f1
             continue
-        
-        ##Only PDF or EPUB formats
-        if "PDF" in meta_text.upper():
-            book_format = "PDF"
-        
-        elif "EPUB" in meta_text.upper():
-            book_format = "EPUB"
 
+        meta_text = metaElem.get_text().upper()
+
+        if "ENGLISH" not in meta_text:
+            continue
+
+        if "EPUB" in meta_text:
+            book_format = "EPUB"
+        elif "PDF" in meta_text:
+            book_format = "PDF"
         else:
             continue
 
-        ##One book format type per download
         if book_format in formats_seen:
             continue
 
-        md5_href = bookElem.find("a")["href"]
-        match = re.search(r"([^\/]+$)",md5_href)
+        md5_link = bookElem.select_one('a[href^="/md5/"]')
 
-        ##Only Matches
-        if not match:
+        if not md5_link:
             continue
-        
+
+        md5 = md5_link["href"].split("/")[-1]
+        breakpoint()
         ##Add to download_list
-        md5 = match.group(1)
         download_list.append((isbn,md5,book_format))
         formats_seen.add(book_format)
 
@@ -124,11 +131,18 @@ def get_download_link(md5,key):
         "key": key
     }
 
+<<<<<<< HEAD
+    res = session.get(url, params=params, timeout=20)
+    res.raise_for_status()
+=======
     res = requests.get(url, params=params, timeout=20)
+>>>>>>> 1a13a00c77b2933804922b5ed5358cddefd636f1
 
     try:
         data = res.json()
     except ValueError:
+<<<<<<< HEAD
+=======
         return None
 
     if data["download_url"]:
@@ -137,7 +151,13 @@ def get_download_link(md5,key):
         return download_link
     else:
         print("Error:", data["error"])
+>>>>>>> 1a13a00c77b2933804922b5ed5358cddefd636f1
         return None
+
+    download_link = data.get("download_url")
+
+    if download_link:
+        return download_link
 
 ## Returns isbn metadata
 cache = diskcache.Cache("./isbn_cache")
@@ -146,7 +166,15 @@ def get_metadata(isbn):
     if isbn in cache:
         print("using cache")
         return cache[isbn]
+<<<<<<< HEAD
+    
+    try:
+        meta = isbnlib.meta(isbn, service="openl")
+    except Exception:
+        meta = None
+=======
     meta = isbnlib.meta(isbn,service='openl')
+>>>>>>> 1a13a00c77b2933804922b5ed5358cddefd636f1
 
     if not meta:
         meta = {
@@ -159,20 +187,25 @@ def get_metadata(isbn):
     return meta
 
 ## Find book infomation from isbn
-def generate_filename(metadata,book_format):
-
-    def clean_filename(filename):
+def clean_filename(filename):
         filename = re.sub(r'[\\/*?:"<>|]', "", filename)
 
         return filename
 
+<<<<<<< HEAD
+def generate_filename(metadata,book_format):
+=======
     isbn = metadata['ISBN-13']
     title = metadata['Title']
     authors = ", ".join(metadata["Authors"])
     file_format = book_format.lower()
+>>>>>>> 1a13a00c77b2933804922b5ed5358cddefd636f1
 
-    filename = f"{isbn}-{title} {authors} {book_format}.{file_format}"
+    isbn = metadata['ISBN-13']
+    title = metadata['Title']
+    authors = ", ".join(metadata["Authors"])
 
+    filename = f"{isbn}-{title} {authors} {book_format}.{book_format.lower()}"
     filename = clean_filename(filename)
 
     return filename
@@ -190,7 +223,11 @@ def create_folderpath():
 # Download and create file
 def create_file(filepath,download_link):
         
+<<<<<<< HEAD
+        res = session.get(download_link, stream=True, timeout=20)
+=======
         res = requests.get(download_link, stream=True, timeout=20)
+>>>>>>> 1a13a00c77b2933804922b5ed5358cddefd636f1
         res.raise_for_status()
 
         with open(filepath,'wb') as bookFile:
@@ -211,10 +248,7 @@ def main():
     isbn_set = process_email_content(raw_messages)
 
     ## Get md5 and file format for each ISBN
-    books = []
-    for isbn in isbn_set:
-
-        books.extend(get_book_data(isbn))
+    books = [book for isbn in isbn_set for book in get_book_data(isbn)]
 
     ## Sorted to process EPUB files first and PDF files second if necessary
 
