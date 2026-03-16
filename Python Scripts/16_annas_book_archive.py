@@ -10,11 +10,8 @@ import diskcache
 import logging
 
 logging.basicConfig(level=logging.DEBUG,format=' %(asctime)s %(levelname)s - %(message)s')
-<<<<<<< HEAD
 ## Create request session
 session = requests.Session()
-=======
->>>>>>> 1a13a00c77b2933804922b5ed5358cddefd636f1
 
 """
 Script 16_annas_book_archive reads an email and downloads related books from Anna's Book Archive.
