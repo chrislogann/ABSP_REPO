@@ -10,8 +10,11 @@ import diskcache
 import logging
 
 logging.basicConfig(level=logging.DEBUG,format=' %(asctime)s %(levelname)s - %(message)s')
+<<<<<<< HEAD
 ## Create request session
 session = requests.Session()
+=======
+>>>>>>> 1a13a00c77b2933804922b5ed5358cddefd636f1
 
 """
 Script 16_annas_book_archive reads an email and downloads related books from Anna's Book Archive.
@@ -57,7 +60,11 @@ def get_book_data(isbn):
 
     query_url = f"https://annas-archive.gl/search?q={isbn}"
 
+<<<<<<< HEAD
     res = session.get(query_url, timeout=20)
+=======
+    res = requests.get(query_url, timeout=20)
+>>>>>>> 1a13a00c77b2933804922b5ed5358cddefd636f1
     res.raise_for_status()
 
     soupReader = BeautifulSoup(res.text, "html.parser")
@@ -67,9 +74,22 @@ def get_book_data(isbn):
     download_list = []
     formats_seen = set()
     for bookElem in bookElems:
+        
+        metaElem = bookElem.select_one("div.font-semibold")
 
+<<<<<<< HEAD
         metaElem = bookElem.select_one("div.font-semibold")
         if not metaElem:
+=======
+        ##Getting metadata
+        if not metaElem:
+            continue
+
+        meta_text = metaElem.get_text()
+
+        ##Only English books
+        if "ENGLISH" not in meta_text.upper():
+>>>>>>> 1a13a00c77b2933804922b5ed5358cddefd636f1
             continue
 
         meta_text = metaElem.get_text().upper()
@@ -114,12 +134,27 @@ def get_download_link(md5,key):
         "key": key
     }
 
+<<<<<<< HEAD
     res = session.get(url, params=params, timeout=20)
     res.raise_for_status()
+=======
+    res = requests.get(url, params=params, timeout=20)
+>>>>>>> 1a13a00c77b2933804922b5ed5358cddefd636f1
 
     try:
         data = res.json()
     except ValueError:
+<<<<<<< HEAD
+=======
+        return None
+
+    if data["download_url"]:
+        download_link = data["download_url"]
+        print("Download link:", download_link)
+        return download_link
+    else:
+        print("Error:", data["error"])
+>>>>>>> 1a13a00c77b2933804922b5ed5358cddefd636f1
         return None
 
     download_link = data.get("download_url")
@@ -134,11 +169,15 @@ def get_metadata(isbn):
     if isbn in cache:
         print("using cache")
         return cache[isbn]
+<<<<<<< HEAD
     
     try:
         meta = isbnlib.meta(isbn, service="openl")
     except Exception:
         meta = None
+=======
+    meta = isbnlib.meta(isbn,service='openl')
+>>>>>>> 1a13a00c77b2933804922b5ed5358cddefd636f1
 
     if not meta:
         meta = {
@@ -156,7 +195,14 @@ def clean_filename(filename):
 
         return filename
 
+<<<<<<< HEAD
 def generate_filename(metadata,book_format):
+=======
+    isbn = metadata['ISBN-13']
+    title = metadata['Title']
+    authors = ", ".join(metadata["Authors"])
+    file_format = book_format.lower()
+>>>>>>> 1a13a00c77b2933804922b5ed5358cddefd636f1
 
     isbn = metadata['ISBN-13']
     title = metadata['Title']
@@ -180,7 +226,11 @@ def create_folderpath():
 # Download and create file
 def create_file(filepath,download_link):
         
+<<<<<<< HEAD
         res = session.get(download_link, stream=True, timeout=20)
+=======
+        res = requests.get(download_link, stream=True, timeout=20)
+>>>>>>> 1a13a00c77b2933804922b5ed5358cddefd636f1
         res.raise_for_status()
 
         with open(filepath,'wb') as bookFile:
