@@ -6,8 +6,7 @@ import threading
 import logging
 import time
 
-logging.basicConfig(level=logging.DEBUG,
-                    format=' %(asctime)s %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.DEBUG,format=' %(asctime)s %(levelname)s - %(message)s')
 # logging.disable()
 
 """
