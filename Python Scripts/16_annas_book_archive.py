@@ -5,6 +5,8 @@ from dotenv import load_dotenv
 import os
 import imapclient
 import pyzmail
+import smtplib
+from email.message import EmailMessage
 import isbnlib
 import diskcache
 import logging
@@ -14,6 +16,11 @@ Script 16_annas_book_archive reads an email and downloads related books from Ann
 """
 
 class EmailClient:
+
+    """
+    Manages interactions with email.
+    """
+
     def __init__(self,email,key,subjects):
         self.email = email
         self.key = key
@@ -21,6 +28,17 @@ class EmailClient:
 
     ## Access email inbox and return book content from email
     def get_email_content(self):
+
+        """
+        Returns isbns from emails with specific subject.
+
+        Params:
+        self: class variables for EmailClient
+
+        Returns:
+        raw_messages: data from email body
+
+        """
 
         logging.info("Opening email inbox for %s",self.email)
         with imapclient.IMAPClient("imap.gmail.com", ssl=True) as imap_obj:
@@ -40,9 +58,20 @@ class EmailClient:
 
             raw_messages = imap_obj.fetch(uids, ['BODY[]', 'FLAGS'])
 
-        return raw_messages
+        return raw_messages,uids
 
     def process_email_content(self, raw_messages):
+
+        """
+        Parses email bodies to extract isbn numbers.
+
+        Params:
+        self: class variables from EmailClient
+
+        Returns:
+        isbn_set: a unique list of isbn numbers
+
+        """
 
         logging.info("Extracting ISBNs from %d email(s)", len(raw_messages))
 
@@ -81,8 +110,55 @@ class EmailClient:
         logging.info("Found %d unique ISBN(s)", len(isbn_set))
 
         return isbn_set
+    
+    ## Send reply email upon successful completion
+    def send_completion_email(self, processed_isbns):
+
+        logging.info("Sending completion email")
+
+        msg = EmailMessage()
+        msg["Subject"] = "Book Download Completed"
+        msg["From"] = self.email
+        msg["To"] = self.email
+
+        body = "The following ISBNs were processed successfully:\n\n"
+        body += "\n".join(processed_isbns)
+
+        msg.set_content(body)
+
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
+            smtp.login(self.email, self.key)
+            smtp.send_message(msg)
+
+        logging.info("Completion email sent")
+
+    ## Moves completed request emails to inbox folder.
+    def move_completed_emails(self, uids, folder_name="Processed Book Requests"):
+
+        logging.info("Moving processed emails to folder: %s", folder_name)
+
+        with imapclient.IMAPClient("imap.gmail.com", ssl=True) as imap_obj:
+            imap_obj.login(self.email, self.key)
+            imap_obj.select_folder("INBOX", readonly=False)
+
+            # Create folder if not exists
+            folders = [f[2] for f in imap_obj.list_folders()]
+            if folder_name not in folders:
+                imap_obj.create_folder(folder_name)
+
+            # Mark as read
+            imap_obj.add_flags(uids, [imapclient.SEEN])
+
+            # Move emails
+            imap_obj.move(uids, folder_name)
+
+        logging.info("Emails moved successfully")
 
 class AnnasArchiveClient:
+
+    """
+    Manages interactions with Anna's Book Archive.
+    """
 
     def __init__(self,session,key):
         self.session = session
@@ -90,6 +166,15 @@ class AnnasArchiveClient:
 
     ## Connect to website and return download data
     def get_book_data(self, isbn):
+        
+        """
+        Returns book content necessary for interactions with API.
+
+        Params:
+
+        self: class variables from AnnasArchiveClient
+        isbn: unique id for a specific book.
+        """
 
         logging.info("Searching Anna's Archive for ISBN %s", isbn)
 
@@ -154,6 +239,19 @@ class AnnasArchiveClient:
 
     ## Get book download link
     def get_download_link(self, md5):
+        
+        """
+        Utilizes API to get download link from Anna's book archive.
+        Number of downloads contigent on Anna's book archive subscription.
+
+        Params:
+        md5: hash id for a specific download
+        key: user API key provided by Anna's book archive.
+
+        Returns:
+        download_link: a link that allows downloading books
+
+        """
 
         url = "https://annas-archive.gl/dyn/api/fast_download.json"
 
@@ -181,11 +279,29 @@ class AnnasArchiveClient:
 
 class MetadataService:
 
+    """
+    Returns isbn metadata from package isbnlib.
+    """
+
     def __init__(self):
         self.cache = diskcache.Cache("./isbn_cache")
 
     ## Returns isbn metadata
     def get_metadata(self,isbn):
+
+        """
+        Returns metadata from an isbn.
+        Data is either cached or referenced from package isbnlib.
+
+        Params:
+
+        self: class variables for MetadataService
+        isbn: unique id for specific book
+
+        Returns:
+        meta: metadata pertaining to a given isbn number.
+
+        """
 
         logging.info("Searching for isbn metadata")
 
@@ -214,21 +330,33 @@ class MetadataService:
         return meta
 
 class FileManager:
+
+    """
+    Handles operations for export file.
+    """
     
     def __init__(self,directory,session):
         self.session = session
         self.folderpath = self.create_folderpath(directory)
 
-    ## Cleans filename for illegal characters
     @staticmethod
     def _clean_filename(filename):
+
+        """
+        Removes illegal characters from filename.
+        Noted as a private class for FileManager.
+        """
             
-            filename = re.sub(r'[\\/*?:"<>|]', "", filename)
-            logging.debug("Cleaned filename %s",filename)
-            return filename
+        filename = re.sub(r'[\\/*?:"<>|]', "", filename)
+        logging.debug("Cleaned filename %s",filename)
+        return filename
 
     ## Find book infomation from isbn
     def generate_filename(self,metadata,book_format):
+
+        """
+        Outputs a filename from given isbn metadata.
+        """
 
         isbn = metadata['ISBN-13']
         title = metadata['Title']
@@ -242,6 +370,10 @@ class FileManager:
     ## Create export folder
     def create_folderpath(self,directory):
 
+        """
+        Creates export folder to house export files.
+        """
+
         folderpath = os.path.join(directory,"downloaded_books")
         os.makedirs(folderpath, exist_ok = True)
         logging.info("Folderpath %s created/found",folderpath)
@@ -249,6 +381,10 @@ class FileManager:
 
     # Download and create file
     def download_file(self,filepath,download_link):
+            
+            """
+            Downloads file from a given download_link from Anna's Book Archive API.
+            """
             
             logging.info("Downloading file for path %s",filepath)
             res = self.session.get(download_link, stream=True, timeout=20)
@@ -292,6 +428,10 @@ class LoggingManager:
         
 class BookDownloaderApp:
 
+    """
+    Organizes the execution defined classes and functions.
+    """
+
     def __init__(self):
 
         load_dotenv()
@@ -299,9 +439,9 @@ class BookDownloaderApp:
         self.book_email_subject = os.getenv("book_email_subject").split(",")
         self.user_email = os.getenv("personal_email")
         self.user_passkey = os.getenv("personal_passkey")
+        self.directory = os.getenv("book_directory")
 
         self.session = requests.Session()
-        self.directory = os.getcwd()
 
         ## Start logging
         log_manager = LoggingManager(self.directory)
@@ -317,10 +457,14 @@ class BookDownloaderApp:
 
     def run(self):
 
+        """
+        Executes functions to gather and export an ebook.
+        """
+
         logging.info("Starting BookDownloaderApp")
 
         # Step 1: Get email content
-        raw_messages = self.email_client.get_email_content()
+        raw_messages, uids = self.email_client.get_email_content()
         if not raw_messages:
             return
 
@@ -340,11 +484,11 @@ class BookDownloaderApp:
         # Step 3: Sort (EPUB first, PDF second)
         sorted_books = sorted(books, key=lambda x: 0 if x[2] == 'EPUB' else 1)
 
-        seen_isbn = set()
+        processed_isbns = set()
 
         for isbn, md5, book_format in sorted_books:
 
-            if isbn in seen_isbn:
+            if isbn in processed_isbns:
                 continue
 
             # Step 4: Metadata
@@ -356,9 +500,9 @@ class BookDownloaderApp:
 
             logging.info("Processing file %s", filename)
 
-            if os.path.exists(filepath):
-                logging.info("File already exists: %s", filepath)
-                seen_isbn.add(isbn)
+            if any(isbn in fname for fname in os.listdir(self.file_manager.folderpath)):
+                logging.info("File already exists: %s", f"{isbn}: {metadata['Title']}")
+                processed_isbns.add(f"{isbn}: {metadata['Title']}")
                 continue
 
             # Step 6: Get download link
@@ -370,7 +514,11 @@ class BookDownloaderApp:
             # Step 7: Download file
             self.file_manager.download_file(filepath, download_link)
 
-            seen_isbn.add(isbn)
+            processed_isbns.add(f"{isbn}: {metadata['Title']}")
+
+        if processed_isbns:
+            self.email_client.send_completion_email(processed_isbns)
+            self.email_client.move_completed_emails(uids)
 
         logging.info("BookDownloaderApp finished")
 
