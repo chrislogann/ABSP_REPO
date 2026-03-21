@@ -10,16 +10,26 @@ from email.message import EmailMessage
 import isbnlib
 import diskcache
 import logging
+from contextlib import contextmanager
 
 """
 Script 16_annas_book_archive reads an email and downloads related books from Anna's Book Archive.
 """
+
+##TODO: change metadata ISBN-13 to ISBN
 
 class EmailClient:
 
     """
     Manages interactions with email.
     """
+
+    @contextmanager
+    def __imap_connection(self, readonly):
+        with imapclient.IMAPClient("imap.gmail.com", ssl=True) as imap_obj:
+            imap_obj.login(self.email, self.key)
+            imap_obj.select_folder("INBOX", readonly=readonly)
+            yield imap_obj
 
     def __init__(self,email,key,subjects):
         self.email = email
@@ -30,20 +40,21 @@ class EmailClient:
     def get_email_content(self):
 
         """
-        Returns isbns from emails with specific subject.
+        Returns email bodies from emails with specific subject.
 
         Params:
         self: class variables for EmailClient
 
         Returns:
         raw_messages: data from email body
+        uids: a list containing email ids
 
         """
 
         logging.info("Opening email inbox for %s",self.email)
-        with imapclient.IMAPClient("imap.gmail.com", ssl=True) as imap_obj:
-            imap_obj.login(self.email, self.key)
-            imap_obj.select_folder("INBOX", readonly=True)
+        logging.info("Searching for book request emails")
+
+        with self.__imap_connection(readonly=True) as imap_obj:
 
             uids = []
             for subject in self.subjects:
@@ -52,7 +63,7 @@ class EmailClient:
 
             if not uids:
                 logging.info("No matching unread emails found")
-                return {}
+                return {}, []
 
             logging.info("Found %d matching email(s)", len(uids))
 
@@ -76,6 +87,7 @@ class EmailClient:
         logging.info("Extracting ISBNs from %d email(s)", len(raw_messages))
 
         pattern = re.compile(r"\b(?:97[89]\d{10}|\d{9}[\dX])\b")
+
         isbn_set = set()
 
         for uid, data in raw_messages.items():
@@ -105,15 +117,64 @@ class EmailClient:
             else:
                 continue
 
-            isbn_set.update(pattern.findall(body))
+            for isbn in pattern.findall(body):
+                if isbnlib.is_isbn13(isbn) or isbnlib.is_isbn10(isbn):
+                    isbn_set.add(isbn)
 
         logging.info("Found %d unique ISBN(s)", len(isbn_set))
 
         return isbn_set
     
-    ## Send reply email upon successful completion
-    def send_completion_email(self, processed_isbns):
+    ## Cleans up confirmation emails
+    def __get_completion_emails(self):
+    
+        """
+        Returns email uids for completion notifications.
 
+        Params:
+        self: class variables for EmailClient
+
+        Returns:
+        uids: a list containing the email uid
+
+        """
+
+        logging.info("Opening email inbox for %s",self.email)
+        logging.info("Searching for completion emails")
+
+        with self.__imap_connection(readonly=True) as imap_obj:
+
+            uids = []
+            subject = "Book Download Completed"
+            logging.debug("Downloading uids with subject %s",subject)
+            uids += imap_obj.search(["SUBJECT",subject])
+
+            if not uids:
+                logging.info("No matching completion emails found")
+                return []
+
+            logging.info("Found %d matching email(s)", len(uids))
+
+        return uids
+
+    def cleanup_completion_emails(self):
+        uids = self.__get_completion_emails()
+        self.move_emails(uids)
+
+    ## Send reply email upon successful completion
+    def send_completion_email(self, processed_books):
+
+        """
+        Sends a completion request upon successful processing.
+
+        Params:
+        processed_isbns: a list of isbns that successfully downloaded a book.
+
+        Returns:
+        None
+
+        """
+        
         logging.info("Sending completion email")
 
         msg = EmailMessage()
@@ -121,8 +182,12 @@ class EmailClient:
         msg["From"] = self.email
         msg["To"] = self.email
 
-        body = "The following ISBNs were processed successfully:\n\n"
-        body += "\n".join(processed_isbns)
+        if not processed_books:
+            body = "No books were processed."
+        else:
+            body = "Book processing results:\n\n"
+            for status, text in processed_books:
+                body += f"[{status}] {text}\n\n"
 
         msg.set_content(body)
 
@@ -133,13 +198,28 @@ class EmailClient:
         logging.info("Completion email sent")
 
     ## Moves completed request emails to inbox folder.
-    def move_completed_emails(self, uids, folder_name="Processed Book Requests"):
+    def move_emails(self, uids, folder_name="Processed Book Requests",flags=None):
 
-        logging.info("Moving processed emails to folder: %s", folder_name)
+        """
+        Moves email with book requests to the assigned parameter folder_name.
+        A folder will be created if not present.Target emails are marked as seen.
 
-        with imapclient.IMAPClient("imap.gmail.com", ssl=True) as imap_obj:
-            imap_obj.login(self.email, self.key)
-            imap_obj.select_folder("INBOX", readonly=False)
+        Params:
+        self: class variables from EmailClient
+        uids: a list containg email uid
+        folder_name: name of inbox folder.
+
+        Returns:
+        None
+
+        """
+
+        logging.info("Moving emails to folder: %s", folder_name)
+
+        if not uids:
+            return
+
+        with self.__imap_connection(readonly=False) as imap_obj:
 
             # Create folder if not exists
             folders = [f[2] for f in imap_obj.list_folders()]
@@ -147,7 +227,8 @@ class EmailClient:
                 imap_obj.create_folder(folder_name)
 
             # Mark as read
-            imap_obj.add_flags(uids, [imapclient.SEEN])
+            if flags:
+                imap_obj.add_flags(uids, flags)
 
             # Move emails
             imap_obj.move(uids, folder_name)
@@ -165,7 +246,7 @@ class AnnasArchiveClient:
         self.key = key
 
     ## Connect to website and return download data
-    def get_book_data(self, isbn):
+    def get_book_data(self, book_url, isbn):
         
         """
         Returns book content necessary for interactions with API.
@@ -178,7 +259,7 @@ class AnnasArchiveClient:
 
         logging.info("Searching Anna's Archive for ISBN %s", isbn)
 
-        query_url = f"https://annas-archive.gl/search?q={isbn}"
+        query_url = f"{book_url}/search?q={isbn}"
 
         res = self.session.get(query_url, timeout=20)
         res.raise_for_status()
@@ -235,16 +316,22 @@ class AnnasArchiveClient:
 
         logging.info("Returning %d download(s) for ISBN %s", len(download_list), isbn)
 
+        if download_list == []:
+
+            download_list.append((isbn,"MD5 ABSENT","BOOK FORMAT ABSENT"))
+
         return download_list
 
     ## Get book download link
-    def get_download_link(self, md5):
+    def get_download_link(self, api_url, md5):
         
         """
         Utilizes API to get download link from Anna's book archive.
         Number of downloads contigent on Anna's book archive subscription.
 
         Params:
+
+        url: link to api url
         md5: hash id for a specific download
         key: user API key provided by Anna's book archive.
 
@@ -252,15 +339,15 @@ class AnnasArchiveClient:
         download_link: a link that allows downloading books
 
         """
-
-        url = "https://annas-archive.gl/dyn/api/fast_download.json"
+        if "ABSENT" in md5.upper():
+            return None
 
         params = {
             "md5": md5,
             "key": self.key
         }
 
-        res = self.session.get(url, params=params, timeout=20)
+        res = self.session.get(api_url, params=params, timeout=20)
         res.raise_for_status()
 
         try:
@@ -435,8 +522,11 @@ class BookDownloaderApp:
     def __init__(self):
 
         load_dotenv()
+        self.book_url = os.getenv("book_url")
+        self.api_url = os.getenv("api_url")
         self.book_key = os.getenv("book_key")
-        self.book_email_subject = os.getenv("book_email_subject").split(",")
+        subjects = os.getenv("book_email_subject", "")
+        self.book_email_subject = [s.strip() for s in subjects.split(",") if s.strip()]
         self.user_email = os.getenv("personal_email")
         self.user_passkey = os.getenv("personal_passkey")
         self.directory = os.getenv("book_directory")
@@ -471,11 +561,9 @@ class BookDownloaderApp:
         isbn_set = self.email_client.process_email_content(raw_messages)
 
         # Step 2: Get book data from Anna's Archive
-        books = [
-            book
-            for isbn in isbn_set
-            for book in self.archive_client.get_book_data(isbn)
-        ]
+        books = []
+        for isbn in isbn_set:
+            books.extend(self.archive_client.get_book_data(self.book_url,isbn))
 
         if not books:
             logging.info("No books found for given ISBNs")
@@ -485,16 +573,21 @@ class BookDownloaderApp:
         sorted_books = sorted(books, key=lambda x: 0 if x[2] == 'EPUB' else 1)
 
         processed_isbns = set()
+        processed_books = set()
 
         for isbn, md5, book_format in sorted_books:
+
+            status_added = "ADDED"
+            status_exists = "EXISTS"
+            status_absent = "ABSENT"
 
             if isbn in processed_isbns:
                 continue
 
-            # Step 4: Metadata
             metadata = self.metadata_service.get_metadata(isbn)
 
-            # Step 5: Filename
+            isbn = metadata['ISBN-13']
+
             filename = self.file_manager.generate_filename(metadata, book_format)
             filepath = os.path.join(self.file_manager.folderpath, filename)
 
@@ -502,23 +595,37 @@ class BookDownloaderApp:
 
             if any(isbn in fname for fname in os.listdir(self.file_manager.folderpath)):
                 logging.info("File already exists: %s", f"{isbn}: {metadata['Title']}")
-                processed_isbns.add(f"{isbn}: {metadata['Title']}")
+                processed_books.add((status_exists, f"{isbn}: {metadata['Title']}"))
+                processed_isbns.add(isbn)
                 continue
 
-            # Step 6: Get download link
-            download_link = self.archive_client.get_download_link(md5)
+            download_link = self.archive_client.get_download_link(self.api_url,md5)
 
             if not download_link:
+                processed_books.add((status_absent, f"{isbn}: {metadata['Title']}"))
+                processed_isbns.add(isbn)
                 continue
 
-            # Step 7: Download file
             self.file_manager.download_file(filepath, download_link)
 
-            processed_isbns.add(f"{isbn}: {metadata['Title']}")
+            processed_books.add((status_added, f"{isbn}: {metadata['Title']}"))
+            processed_isbns.add(isbn)
 
-        if processed_isbns:
-            self.email_client.send_completion_email(processed_isbns)
-            self.email_client.move_completed_emails(uids)
+        if processed_books:
+
+            order = {"ADDED": 0, "EXISTS": 1, "ABSENT": 2}
+            processed_books_sorted = sorted(
+            processed_books,
+            key=lambda item: (order[item[0]], item[1])
+            )
+
+            self.email_client.send_completion_email(processed_books_sorted)
+            self.email_client.move_emails(uids,flags=[imapclient.SEEN])
+
+        ## Step 4: cleanup completion emails 
+        self.email_client.cleanup_completion_emails()
+
+        self.session.close()
 
         logging.info("BookDownloaderApp finished")
 
