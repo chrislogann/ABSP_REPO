@@ -4,7 +4,7 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime
-from dotenv import load_dotenv
+import keyring
 
 """
 Script 16_random_chore_assigner_email.py references a list of emails to assign a chores.
@@ -109,9 +109,8 @@ def main():
 
     directory = os.getcwd()
 
-    load_dotenv()
-    vSender = os.getenv("user_email")
-    vSenderPwd = os.getenv("user_passkey")
+    vSender = keyring.get_password("system", "test_email")
+    vSenderPwd = keyring.get_password("system", vSender)
     
     FILES = {
     "Contacts": "16_chore_contact.txt",

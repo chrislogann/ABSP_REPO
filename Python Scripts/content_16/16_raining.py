@@ -2,7 +2,7 @@ import os
 import sys
 import requests
 from bs4 import BeautifulSoup
-from dotenv import load_dotenv
+import keyring 
 from twilio.rest import Client
 
 """
@@ -20,11 +20,10 @@ weather_elem = soupReader.find("div",{"id": "current_conditions-summary"})
 weather_status = weather_elem.find("p",{"class":"myforecast-current"}).text
 
 if "RAIN" in str(weather_status).upper():
-    load_dotenv()
-    twilio_sid = os.getenv("twilio_sid")
-    twilio_secret = os.getenv("twilio_secret")
-    twilio_number = os.getenv("twilio_number")
-    personal_number = os.getenv("personal_number")
+    twilio_sid = keyring.get_password("system", "twilio_sid")
+    twilio_secret = keyring.get_password("system", twilio_sid)
+    twilio_number = keyring.get_password("system", "twilio_number")
+    personal_number = keyring.get_password("system", "personal_number")
 
     twilio_client = Client(twilio_sid,twilio_secret)
 

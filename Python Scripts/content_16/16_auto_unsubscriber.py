@@ -1,5 +1,5 @@
 import os
-from dotenv import load_dotenv
+import keyring
 from bs4 import BeautifulSoup
 import re
 import imapclient
@@ -12,9 +12,8 @@ in a webrowser.
 """
 
 ## Acessing Email
-load_dotenv()
-user_email = os.getenv("personal_email")
-user_passkey = os.getenv("personal_passkey")
+user_email = keyring.get_password("system", "personal_email")
+user_passkey = keyring.get_password("system", user_email)
 
 imap_obj = imapclient.IMAPClient("imap.gmail.com",ssl = True)
 imap_obj.login(user_email,user_passkey)
