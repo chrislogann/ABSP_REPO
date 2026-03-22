@@ -1,4 +1,4 @@
-from dotenv import load_dotenv
+import keyring
 import os
 import smtplib
 from email.mime.text import MIMEText
@@ -35,9 +35,8 @@ def send_email(pSender,pSenderPwd,pReceivier,pMessage):
     except Exception as e:
         print(f"Error: {e}")
 
-load_dotenv()
-vSender = os.getenv("user_email")
-vSenderPwd = os.getenv("user_passkey")
+vSender = keyring.get_password("system", "test_email")
+vSenderPwd = keyring.get_password("system", vSender)
 vReceiver = os.getenv("receiver_email")
 
 vMessage = draft_email(vSender,vReceiver)

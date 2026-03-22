@@ -11,12 +11,14 @@ import isbnlib
 import diskcache
 import logging
 from contextlib import contextmanager
+import keyring
 
 """
 Script 16_annas_book_archive reads an email and downloads related books from Anna's Book Archive.
 """
 
 ##TODO: change metadata ISBN-13 to ISBN
+##TODO: Add error message email
 
 class EmailClient:
 
@@ -524,11 +526,11 @@ class BookDownloaderApp:
         load_dotenv()
         self.book_url = os.getenv("book_url")
         self.api_url = os.getenv("api_url")
-        self.book_key = os.getenv("book_key")
+        self.book_key = keyring.get_password("system", "book_key")
         subjects = os.getenv("book_email_subject", "")
         self.book_email_subject = [s.strip() for s in subjects.split(",") if s.strip()]
-        self.user_email = os.getenv("personal_email")
-        self.user_passkey = os.getenv("personal_passkey")
+        self.user_email = keyring.get_password("system", "personal_email")
+        self.user_passkey = keyring.get_password("system", self.user_email)
         self.directory = os.getenv("book_directory")
 
         self.session = requests.Session()
