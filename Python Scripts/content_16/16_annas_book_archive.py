@@ -429,7 +429,7 @@ class FileManager:
         self.folderpath = self.create_folderpath(directory)
 
     @staticmethod
-    def _clean_filename(filename):
+    def _clean_filename(filename,max_length=120):
 
         """
         Removes illegal characters from filename.
@@ -438,7 +438,7 @@ class FileManager:
             
         filename = re.sub(r'[\\/*?:"<>|]', "", filename)
         logging.debug("Cleaned filename %s",filename)
-        return filename
+        return filename[:max_length]
 
     ## Find book infomation from isbn
     def generate_filename(self,metadata,book_format):
@@ -451,8 +451,8 @@ class FileManager:
         title = metadata['Title']
         authors = ", ".join(metadata["Authors"])
 
-        filename = f"{isbn}-{title} {authors} {book_format}.{book_format.lower()}"
-        filename = self._clean_filename(filename)
+        filename = f"{isbn}-{title} {authors} {book_format}"
+        filename = f"{self._clean_filename(filename)}.{book_format.lower()}"
         logging.debug("Filename %s generated",filename)
         return filename
 
