@@ -19,6 +19,8 @@ Script 16_annas_book_archive reads an email and downloads related books from Ann
 
 ##TODO: change metadata ISBN-13 to ISBN
 ##TODO: Add error message email
+##TODO: Duplicate email error
+##TODO: Specify book format in email
 
 class EmailClient:
 
